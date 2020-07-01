@@ -797,7 +797,7 @@ impl Generator {
 
             // Start with serial execution for the first few pixels, then go wide
             let n_workers = if redo_count < 1000 { 1 } else { max_workers };
-            if !has_fanned_out && n_workers > 1 {
+            if n_workers > 1 {
                 has_fanned_out = true;
                 let tile_adjusted_width = (self.output_size.width as f32
                     * (1.0 + TILING_BOUNDARY_PERCENTAGE * 2.0))
@@ -815,6 +815,7 @@ impl Generator {
                         .sqrt() as u32
                         * 2
                         + 1;
+                println!("grid cell size {}\n\n", grid_cell_size);
                 let new_tree_grid = TreeGrid::new(
                     tile_adjusted_width,
                     tile_adjusted_height,
