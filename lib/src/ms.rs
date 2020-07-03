@@ -750,7 +750,7 @@ impl Generator {
             self.tree_grid = TreeGrid::new(
                 tile_adjusted_width,
                 tile_adjusted_height,
-                max(tile_adjusted_width, tile_adjusted_height),
+                max(tile_adjusted_width, tile_adjusted_height) / 3,
                 (self.output_size.width as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
                 (self.output_size.height as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
             );
@@ -796,8 +796,9 @@ impl Generator {
             let redo_count = self.resolved.get_mut().unwrap().len() - self.locked_resolved;
 
             // Start with serial execution for the first few pixels, then go wide
-            let n_workers = if redo_count < 1000 { 1 } else { max_workers };
-            if n_workers > 1 {
+            let n_workers = if redo_count < 1000 { max_workers } else { max_workers };
+            println!("p stage {} {}", p_stage, params.p_stages);
+            if p_stage < params.p_stages && !has_fanned_out {
                 has_fanned_out = true;
                 let tile_adjusted_width = (self.output_size.width as f32
                     * (1.0 + TILING_BOUNDARY_PERCENTAGE * 2.0))
