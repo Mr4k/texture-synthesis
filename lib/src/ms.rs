@@ -889,7 +889,10 @@ impl Generator {
                     // 1. Get a pixel to resolve. Check if we have already resolved pixel i; if yes, resolve again; if no, pick a new one
                     let next_unresolved = if i < redo_count {
                         update_resolved_list = false;
+                        let now = SystemTime::now();
                         self.resolved.read().unwrap()[i + self.locked_resolved].0
+                        let acquire_time = now.elapsed().unwrap().as_millis();
+                        debug_total_wait_time_blocked += acquire_time;
                     } else {
                         update_resolved_list = true;
                         let pick_tuple = self.pick_random_unresolved(loop_seed);
