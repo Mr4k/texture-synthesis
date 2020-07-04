@@ -4,6 +4,7 @@ use rstar::RTree;
 use std::cmp::max;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Mutex, RwLock};
+use std::time::{SystemTime};
 
 use crate::{img_pyramid::*, unsync::*, CoordinateTransform, Dims, SamplingMethod};
 
@@ -368,14 +369,16 @@ impl Generator {
     }
 
     //returns flat coord
-    fn pick_random_unresolved(&self, seed: u64) -> Option<CoordFlat> {
+    fn pick_random_unresolved(&self, seed: u64) -> (Option<CoordFlat>, u128) {
+        let now = SystemTime::now();
         let mut unresolved = self.unresolved.lock().unwrap();
+        let acquire_time = now.elapsed().unwrap().as_millis();
 
         if unresolved.len() == 0 {
-            None //return fail
+            (None, acquire_time) //return fail
         } else {
             let rand_index = Pcg32::seed_from_u64(seed).gen_range(0, unresolved.len());
-            Some(unresolved.swap_remove(rand_index)) //return success
+            (Some(unresolved.swap_remove(rand_index)), acquire_time) //return success
         }
     }
 
@@ -422,7 +425,7 @@ impl Generator {
         seed: u64,
     ) {
         for i in 0..steps {
-            if let Some(ref unresolved_flat) = self.pick_random_unresolved(seed + i as u64) {
+            if let Some(ref unresolved_flat) = self.pick_random_unresolved(seed + i as u64).0 {
                 //no resolved neighs? resolve at random!
                 self.resolve_at_random(
                     &mut self.resolved.write().unwrap(),
@@ -750,7 +753,7 @@ impl Generator {
             self.tree_grid = TreeGrid::new(
                 tile_adjusted_width,
                 tile_adjusted_height,
-                max(tile_adjusted_width, tile_adjusted_height) / 3,
+                max(tile_adjusted_width, tile_adjusted_height),
                 (self.output_size.width as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
                 (self.output_size.height as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
             );
@@ -796,9 +799,8 @@ impl Generator {
             let redo_count = self.resolved.get_mut().unwrap().len() - self.locked_resolved;
 
             // Start with serial execution for the first few pixels, then go wide
-            let n_workers = if redo_count < 1000 { max_workers } else { max_workers };
-            println!("p stage {} {}", p_stage, params.p_stages);
-            if p_stage < params.p_stages && !has_fanned_out {
+            let n_workers = if redo_count < 1000 { 1 } else { max_workers };
+            if n_workers > 1 {
                 has_fanned_out = true;
                 let tile_adjusted_width = (self.output_size.width as f32
                     * (1.0 + TILING_BOUNDARY_PERCENTAGE * 2.0))
@@ -816,7 +818,6 @@ impl Generator {
                         .sqrt() as u32
                         * 2
                         + 1;
-                println!("grid cell size {}\n\n", grid_cell_size);
                 let new_tree_grid = TreeGrid::new(
                     tile_adjusted_width,
                     tile_adjusted_height,
@@ -853,6 +854,7 @@ impl Generator {
             let thread_counter = AtomicUsize::new(0);
 
             let worker_fn = || {
+                let mut debug_total_wait_time_blocked = 0;
                 let mut candidates: Vec<CandidateStruct> = Vec::new();
                 let mut my_pattern: ColorPattern = ColorPattern::new();
                 let mut k_neighs: Vec<SignedCoord2D> =
@@ -890,7 +892,9 @@ impl Generator {
                         self.resolved.read().unwrap()[i + self.locked_resolved].0
                     } else {
                         update_resolved_list = true;
-                        if let Some(pixel) = self.pick_random_unresolved(loop_seed) {
+                        let pick_tuple = self.pick_random_unresolved(loop_seed);
+                        debug_total_wait_time_blocked += pick_tuple.1;
+                        if let Some(pixel) = pick_tuple.0 {
                             pixel
                         } else {
                             break;
@@ -992,6 +996,7 @@ impl Generator {
                         );
                     }
                 }
+                println!("thread blocked ms {}\n\n", debug_total_wait_time_blocked);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
