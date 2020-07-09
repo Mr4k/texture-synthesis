@@ -828,7 +828,9 @@ impl Generator {
                     (self.output_size.width as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
                     (self.output_size.height as f32 * TILING_BOUNDARY_PERCENTAGE) as u32 + 1,
                 );
+                let now = SystemTime::now();
                 self.tree_grid.clone_into_new_tree_grid(&new_tree_grid);
+                println!("insert time {}\n\n", now.elapsed().unwrap().as_millis());
                 self.tree_grid = new_tree_grid;
             }
 
