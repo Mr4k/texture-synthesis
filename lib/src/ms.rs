@@ -1065,7 +1065,7 @@ impl Generator {
                 })
                 .unwrap();
                 let debug_thread_time = now.elapsed().unwrap().as_millis();
-                println!("debug thread time {}", debug_thread_time);
+                println!("debug thread time {}\n\n", debug_thread_time);
             }
 
             {
