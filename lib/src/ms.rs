@@ -881,6 +881,7 @@ impl Generator {
 
                 let out_color_map = &[ImageBuffer::from(self.color_map.as_ref())];
 
+                let now = SystemTime::now();
                 loop {
                     // Get the next work item
                     let i = processed_pixel_count.fetch_add(1, Ordering::Relaxed);
@@ -1010,6 +1011,8 @@ impl Generator {
                         );
                     }
                 }
+                let debug_thread_time = now.elapsed().unwrap().as_millis();
+                println!("debug loop time {}\n\n", debug_thread_time);
                 println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked, debug_insert_time, debug_read_time);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
