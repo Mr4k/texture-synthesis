@@ -291,9 +291,10 @@ impl Generator {
         tree_grid: &TreeGrid,
         update_queue: &[([i32; 2], CoordFlat, Score)],
         is_tiling_mode: bool,
-    ) {
+    ) -> u128 {
+        let mut debug_lock_time = 0;
         for (a, b, score) in update_queue.iter() {
-            tree_grid.insert(a[0], a[1]);
+            debug_lock_time += tree_grid.insert(a[0], a[1]);
 
             if is_tiling_mode {
                 //if close to border add additional mirrors
@@ -303,23 +304,24 @@ impl Generator {
                 let y_t = self.output_size.height as i32 - y_b;
 
                 if a[0] < x_l {
-                    tree_grid.insert(a[0] + (self.output_size.width as i32), a[1]);
+                    debug_lock_time += tree_grid.insert(a[0] + (self.output_size.width as i32), a[1]);
                 // +x
                 } else if a[0] > x_r {
-                    tree_grid.insert(a[0] - (self.output_size.width as i32), a[1]);
+                    debug_lock_time += tree_grid.insert(a[0] - (self.output_size.width as i32), a[1]);
                     // -x
                 }
 
                 if a[1] < y_b {
-                    tree_grid.insert(a[0], a[1] + (self.output_size.height as i32));
+                    debug_lock_time += tree_grid.insert(a[0], a[1] + (self.output_size.height as i32));
                 // +Y
                 } else if a[1] > y_t {
-                    tree_grid.insert(a[0], a[1] - (self.output_size.height as i32));
+                    debug_lock_time += tree_grid.insert(a[0], a[1] - (self.output_size.height as i32));
                     // -Y
                 }
             }
             my_resolved_list.push((*b, *score));
         }
+        debug_lock_time
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -333,7 +335,7 @@ impl Generator {
         score: Score,
         island_id: (PatchId, MapId),
         is_tiling_mode: bool,
-    ) {
+    ) -> u128 {
         let flat_coord = update_coord.to_flat(self.output_size);
 
         // A little cheat to avoid taking excessive locks.
@@ -355,7 +357,7 @@ impl Generator {
         );
 
         if update_resolved_list {
-            self.flush_resolved(
+            return self.flush_resolved(
                 my_resolved_list,
                 &self.tree_grid,
                 &[(
@@ -364,8 +366,9 @@ impl Generator {
                     score,
                 )],
                 is_tiling_mode,
-            );
+            )
         }
+        0
     }
 
     //returns flat coord
@@ -387,13 +390,13 @@ impl Generator {
         coord: Coord2D,
         k: u32,
         k_neighs_2d: &mut Vec<SignedCoord2D>,
-    ) -> bool {
-        self.tree_grid
+    ) -> (bool, u128) {
+        let debug_time = self.tree_grid
             .get_k_nearest_neighbors(coord.x, coord.y, k as usize, k_neighs_2d);
         if k_neighs_2d.is_empty() {
-            return false;
+            return (false, debug_time);
         }
-        true
+        (true, debug_time)
     }
 
     fn get_distances_to_k_neighs(&self, coord: Coord2D, k_neighs_2d: &[SignedCoord2D]) -> Vec<f64> {
@@ -855,6 +858,9 @@ impl Generator {
 
             let worker_fn = || {
                 let mut debug_total_wait_time_blocked = 0;
+                let mut debug_insert_time = 0;
+                let mut debug_read_time = 0;
+
                 let mut candidates: Vec<CandidateStruct> = Vec::new();
                 let mut my_pattern: ColorPattern = ColorPattern::new();
                 let mut k_neighs: Vec<SignedCoord2D> =
@@ -914,11 +920,13 @@ impl Generator {
                     k_neighs.clear();
 
                     // 2. find K nearest resolved neighs
-                    if self.find_k_nearest_resolved_neighs(
+                    let debug_ret = self.find_k_nearest_resolved_neighs(
                         unresolved_2d,
                         params.nearest_neighbors,
                         &mut k_neighs,
-                    ) {
+                    );
+                    debug_read_time += debug_ret.1;
+                    if debug_ret.0 {
                         //2.1 get distances to the pattern of neighbors
                         let k_neighs_dist =
                             self.get_distances_to_k_neighs(unresolved_2d, &k_neighs);
@@ -980,7 +988,7 @@ impl Generator {
                         let best_match_map_id = best_match.coord.1;
 
                         // 5. resolve our pixel
-                        self.update(
+                        debug_insert_time += self.update(
                             &mut my_resolved_list,
                             unresolved_2d,
                             (best_match_coord, best_match_map_id),
@@ -1000,7 +1008,7 @@ impl Generator {
                         );
                     }
                 }
-                println!("thread blocked ms {}\n\n", debug_total_wait_time_blocked);
+                println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked, debug_insert_time, debug_read_time);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
@@ -1306,12 +1314,15 @@ impl TreeGrid {
         (x * self.grid_height + y) as usize
     }
 
-    pub fn insert(&self, x: i32, y: i32) {
+    pub fn insert(&self, x: i32, y: i32) -> u128 {
         let my_tree_index = self.get_tree_index(
             ((x + self.offset_x) as u32) / self.chunk_size,
             ((y + self.offset_y) as u32) / self.chunk_size,
         );
+        
+        let now = SystemTime::now();
         self.rtrees[my_tree_index].write().unwrap().insert([x, y]);
+        now.elapsed().unwrap().as_millis()
     }
 
     pub fn clone_into_new_tree_grid(&self, other: &Self) {
@@ -1328,12 +1339,14 @@ impl TreeGrid {
         y: u32,
         k: usize,
         result: &mut Vec<SignedCoord2D>,
-    ) {
+    ) -> u128 {
         let offset_x = x as i32 + self.offset_x;
         let offset_y = y as i32 + self.offset_y;
 
         let chunk_x = offset_x / self.chunk_size as i32;
         let chunk_y = offset_y / self.chunk_size as i32;
+
+        let mut debug_time_spent_extending = 0;
 
         struct ChunkSearchInfo {
             x: i32,
@@ -1457,21 +1470,26 @@ impl TreeGrid {
                 let my_tree_index =
                     self.get_tree_index(place_to_look.x as u32, place_to_look.y as u32);
                 let my_rtree = &self.rtrees[my_tree_index];
-                tmp_result.extend(
-                    my_rtree
-                        .read()
-                        .unwrap()
-                        .nearest_neighbor_iter(&[x as i32, y as i32])
-                        .take(k)
-                        .map(|a| {
-                            (
-                                (*a)[0],
-                                (*a)[1],
-                                ((*a)[0] as i64 - x as i64) * ((*a)[0] as i64 - x as i64)
-                                    + ((*a)[1] as i64 - y as i64) * ((*a)[1] as i64 - y as i64),
-                            )
-                        }),
-                );
+                
+                {
+                    let now = SystemTime::now();
+                    let rtree = my_rtree.read().unwrap();
+                    tmp_result.extend(
+                            rtree
+                            .nearest_neighbor_iter(&[x as i32, y as i32])
+                            .take(k)
+                            .map(|a| {
+                                (
+                                    (*a)[0],
+                                    (*a)[1],
+                                    ((*a)[0] as i64 - x as i64) * ((*a)[0] as i64 - x as i64)
+                                        + ((*a)[1] as i64 - y as i64) * ((*a)[1] as i64 - y as i64),
+                                )
+                            }),
+                    );
+                    let extend_time = now.elapsed().unwrap().as_millis();
+                    debug_time_spent_extending += extend_time;
+                }
 
                 // this isn't really the kth best distance but it's an okay approximation
                 if tmp_result.len() >= k {
@@ -1489,6 +1507,7 @@ impl TreeGrid {
                 .take(k)
                 .map(|a| SignedCoord2D::from(a.0, a.1)),
         );
+        debug_time_spent_extending
     }
 }
 
