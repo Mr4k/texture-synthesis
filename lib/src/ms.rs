@@ -1035,9 +1035,9 @@ impl Generator {
                     }
                 }
                 let debug_thread_time = debug_now.elapsed().unwrap().as_nanos();
-                println!("debug loop time {}\n\n", debug_thread_time / 1000000 / debug_loop_iterations);
-                println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked / 1000000 / debug_loop_iterations, debug_insert_time / 1000000 / debug_loop_iterations, debug_read_time / 1000000 / debug_loop_iterations);
-                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}, find k {}, loop iters {}\n\n", debug_update_time / 1000000 / debug_loop_iterations, debug_random_time / 1000000 / debug_loop_iterations, debug_best_match_time / 1000000 / debug_loop_iterations, debug_find_candidates_time / 1000000 / debug_loop_iterations, debug_fetch_add_time / 1000000 / debug_loop_iterations, debug_get_resolved_pixel_time / 1000000 / debug_loop_iterations, debug_find_time / 1000000 / debug_loop_iterations, debug_loop_iterations);
+                println!("debug loop time {}\n\n", debug_thread_time  / debug_loop_iterations);
+                println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked  / debug_loop_iterations, debug_insert_time  / debug_loop_iterations, debug_read_time  / debug_loop_iterations);
+                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}, find k {}, loop iters {}\n\n", debug_update_time  / debug_loop_iterations, debug_random_time  / debug_loop_iterations, debug_best_match_time  / debug_loop_iterations, debug_find_candidates_time  / debug_loop_iterations, debug_fetch_add_time  / debug_loop_iterations, debug_get_resolved_pixel_time  / debug_loop_iterations, debug_find_time  / debug_loop_iterations, debug_loop_iterations);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
@@ -1094,7 +1094,7 @@ impl Generator {
                 })
                 .unwrap();
                 let debug_thread_time = now.elapsed().unwrap().as_nanos();
-                println!("debug thread time {}\n\n", debug_thread_time / 1000000);
+                println!("debug thread time {}\n\n", debug_thread_time );
             }
 
             {
