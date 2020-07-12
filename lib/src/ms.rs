@@ -803,7 +803,7 @@ impl Generator {
 
             // Start with serial execution for the first few pixels, then go wide
             let n_workers = if redo_count < 1000 { 1 } else { max_workers };
-            if n_workers > 1 {
+            if n_workers > 1 && !has_fanned_out {
                 has_fanned_out = true;
                 let tile_adjusted_width = (self.output_size.width as f32
                     * (1.0 + TILING_BOUNDARY_PERCENTAGE * 2.0))
@@ -1501,6 +1501,8 @@ impl TreeGrid {
                 {
                     let now = SystemTime::now();
                     let rtree = my_rtree.read().unwrap();
+                    let extend_time = now.elapsed().unwrap().as_nanos();
+                    debug_time_spent_extending += extend_time;
                     tmp_result.extend(
                             rtree
                             .nearest_neighbor_iter(&[x as i32, y as i32])
@@ -1514,8 +1516,6 @@ impl TreeGrid {
                                 )
                             }),
                     );
-                    let extend_time = now.elapsed().unwrap().as_nanos();
-                    debug_time_spent_extending += extend_time;
                 }
 
                 // this isn't really the kth best distance but it's an okay approximation
