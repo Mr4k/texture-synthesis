@@ -869,6 +869,7 @@ impl Generator {
                 let mut debug_update_time = 0;
                 let mut debug_random_time = 0;
                 let mut debug_find_time = 0;
+                let mut debug_loop_iterations = 0;
 
                 let mut candidates: Vec<CandidateStruct> = Vec::new();
                 let mut my_pattern: ColorPattern = ColorPattern::new();
@@ -890,6 +891,7 @@ impl Generator {
 
                 let debug_now = SystemTime::now();
                 loop {
+                    debug_loop_iterations += 1;
                     // Get the next work item
                     let now = SystemTime::now();
                     let i = processed_pixel_count.fetch_add(1, Ordering::Relaxed);
@@ -1035,7 +1037,7 @@ impl Generator {
                 let debug_thread_time = debug_now.elapsed().unwrap().as_nanos();
                 println!("debug loop time {}\n\n", debug_thread_time / 1000000);
                 println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked / 1000000, debug_insert_time / 1000000, debug_read_time / 1000000);
-                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}, find k {}\n\n", debug_update_time / 1000000, debug_random_time / 1000000, debug_best_match_time / 1000000, debug_find_candidates_time / 1000000, debug_fetch_add_time / 1000000, debug_get_resolved_pixel_time / 1000000, debug_find_time / 1000000);
+                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}, find k {}, loop iters {}\n\n", debug_update_time / 1000000, debug_random_time / 1000000, debug_best_match_time / 1000000, debug_find_candidates_time / 1000000, debug_fetch_add_time / 1000000, debug_get_resolved_pixel_time / 1000000, debug_find_time / 1000000, debug_loop_iterations);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
