@@ -375,7 +375,7 @@ impl Generator {
     fn pick_random_unresolved(&self, seed: u64) -> (Option<CoordFlat>, u128) {
         let now = SystemTime::now();
         let mut unresolved = self.unresolved.lock().unwrap();
-        let acquire_time = now.elapsed().unwrap().as_millis();
+        let acquire_time = now.elapsed().unwrap().as_nanos();
 
         if unresolved.len() == 0 {
             (None, acquire_time) //return fail
@@ -830,7 +830,7 @@ impl Generator {
                 );
                 let now = SystemTime::now();
                 self.tree_grid.clone_into_new_tree_grid(&new_tree_grid);
-                println!("insert time {}\n\n", now.elapsed().unwrap().as_millis());
+                println!("insert time {}\n\n", now.elapsed().unwrap().as_nanos());
                 self.tree_grid = new_tree_grid;
             }
 
@@ -862,6 +862,12 @@ impl Generator {
                 let mut debug_total_wait_time_blocked = 0;
                 let mut debug_insert_time = 0;
                 let mut debug_read_time = 0;
+                let mut debug_fetch_add_time = 0;
+                let mut debug_get_resolved_pixel_time = 0;
+                let mut debug_find_candidates_time = 0;
+                let mut debug_best_match_time = 0;
+                let mut debug_update_time = 0;
+                let mut debug_random_time = 0;
 
                 let mut candidates: Vec<CandidateStruct> = Vec::new();
                 let mut my_pattern: ColorPattern = ColorPattern::new();
@@ -881,10 +887,12 @@ impl Generator {
 
                 let out_color_map = &[ImageBuffer::from(self.color_map.as_ref())];
 
-                let now = SystemTime::now();
+                let debug_now = SystemTime::now();
                 loop {
                     // Get the next work item
+                    let now = SystemTime::now();
                     let i = processed_pixel_count.fetch_add(1, Ordering::Relaxed);
+                    debug_fetch_add_time += now.elapsed().unwrap().as_nanos();
 
                     let update_resolved_list: bool;
 
@@ -896,11 +904,12 @@ impl Generator {
                     let loop_seed = p_stage_seed + i as u64;
 
                     // 1. Get a pixel to resolve. Check if we have already resolved pixel i; if yes, resolve again; if no, pick a new one
+                    let now = SystemTime::now();
                     let next_unresolved = if i < redo_count {
                         update_resolved_list = false;
                         let now = SystemTime::now();
                         let ret = self.resolved.read().unwrap()[i + self.locked_resolved].0;
-                        let acquire_time = now.elapsed().unwrap().as_millis();
+                        let acquire_time = now.elapsed().unwrap().as_nanos();
                         debug_total_wait_time_blocked += acquire_time;
                         ret
                     } else {
@@ -913,6 +922,7 @@ impl Generator {
                             break;
                         }
                     };
+                    debug_get_resolved_pixel_time += now.elapsed().unwrap().as_nanos();
 
                     let unresolved_2d = next_unresolved.to_2d(self.output_size);
 
@@ -930,6 +940,7 @@ impl Generator {
                     );
                     debug_read_time += debug_ret.1;
                     if debug_ret.0 {
+                        let now = SystemTime::now();
                         //2.1 get distances to the pattern of neighbors
                         let k_neighs_dist =
                             self.get_distances_to_k_neighs(unresolved_2d, &k_neighs);
@@ -954,6 +965,7 @@ impl Generator {
                             &mut my_pattern,
                             is_tiling_mode,
                         );
+                        debug_find_candidates_time += now.elapsed().unwrap().as_nanos();
 
                         // 3.2 get pattern for guide map if we have them
                         let (my_cost, guide_cost) = if let Some(ref in_guides) = guides {
@@ -975,6 +987,7 @@ impl Generator {
                         };
 
                         // 4. find best match based on the candidate patterns
+                        let now = SystemTime::now();
                         let (best_match, score) = find_best_match(
                             image::Rgba([0, 0, 0, 255]),
                             &example_maps,
@@ -989,7 +1002,9 @@ impl Generator {
 
                         let best_match_coord = best_match.coord.0.to_unsigned();
                         let best_match_map_id = best_match.coord.1;
+                        debug_best_match_time += now.elapsed().unwrap().as_nanos();
 
+                        let now = SystemTime::now();
                         // 5. resolve our pixel
                         debug_insert_time += self.update(
                             &mut my_resolved_list,
@@ -1001,19 +1016,23 @@ impl Generator {
                             best_match.id,
                             is_tiling_mode,
                         );
+                        debug_update_time += now.elapsed().unwrap().as_nanos();
                     } else {
                         //no resolved neighs? resolve at random!
+                        let now = SystemTime::now();
                         self.resolve_at_random(
                             &mut my_resolved_list,
                             unresolved_2d,
                             &example_maps,
                             p_stage_seed,
                         );
+                        debug_random_time += now.elapsed().unwrap().as_nanos();
                     }
                 }
-                let debug_thread_time = now.elapsed().unwrap().as_millis();
-                println!("debug loop time {}\n\n", debug_thread_time);
-                println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked, debug_insert_time, debug_read_time);
+                let debug_thread_time = debug_now.elapsed().unwrap().as_nanos();
+                println!("debug loop time {}\n\n", debug_thread_time / 1000000);
+                println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked / 1000000, debug_insert_time / 1000000, debug_read_time / 1000000);
+                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}\n\n", debug_update_time / 1000000, debug_random_time / 1000000, debug_best_match_time / 1000000, debug_find_candidates_time / 1000000, debug_fetch_add_time / 1000000, debug_get_resolved_pixel_time / 1000000);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
@@ -1069,8 +1088,8 @@ impl Generator {
                     }
                 })
                 .unwrap();
-                let debug_thread_time = now.elapsed().unwrap().as_millis();
-                println!("debug thread time {}\n\n", debug_thread_time);
+                let debug_thread_time = now.elapsed().unwrap().as_nanos();
+                println!("debug thread time {}\n\n", debug_thread_time / 1000000);
             }
 
             {
@@ -1330,7 +1349,7 @@ impl TreeGrid {
         
         let now = SystemTime::now();
         self.rtrees[my_tree_index].write().unwrap().insert([x, y]);
-        now.elapsed().unwrap().as_millis()
+        now.elapsed().unwrap().as_nanos()
     }
 
     pub fn clone_into_new_tree_grid(&self, other: &Self) {
@@ -1495,7 +1514,7 @@ impl TreeGrid {
                                 )
                             }),
                     );
-                    let extend_time = now.elapsed().unwrap().as_millis();
+                    let extend_time = now.elapsed().unwrap().as_nanos();
                     debug_time_spent_extending += extend_time;
                 }
 
