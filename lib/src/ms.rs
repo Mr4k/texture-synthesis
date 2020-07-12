@@ -868,6 +868,7 @@ impl Generator {
                 let mut debug_best_match_time = 0;
                 let mut debug_update_time = 0;
                 let mut debug_random_time = 0;
+                let mut debug_find_time = 0;
 
                 let mut candidates: Vec<CandidateStruct> = Vec::new();
                 let mut my_pattern: ColorPattern = ColorPattern::new();
@@ -933,11 +934,13 @@ impl Generator {
                     k_neighs.clear();
 
                     // 2. find K nearest resolved neighs
+                    let now = SystemTime::now();
                     let debug_ret = self.find_k_nearest_resolved_neighs(
                         unresolved_2d,
                         params.nearest_neighbors,
                         &mut k_neighs,
                     );
+                    debug_find_time += now.elapsed().unwrap().as_nanos();
                     debug_read_time += debug_ret.1;
                     if debug_ret.0 {
                         let now = SystemTime::now();
@@ -1032,7 +1035,7 @@ impl Generator {
                 let debug_thread_time = debug_now.elapsed().unwrap().as_nanos();
                 println!("debug loop time {}\n\n", debug_thread_time / 1000000);
                 println!("find lock {}\n\n, insert lock {} \n\n, read lock {}, \n\n", debug_total_wait_time_blocked / 1000000, debug_insert_time / 1000000, debug_read_time / 1000000);
-                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}\n\n", debug_update_time / 1000000, debug_random_time / 1000000, debug_best_match_time / 1000000, debug_find_candidates_time / 1000000, debug_fetch_add_time / 1000000, debug_get_resolved_pixel_time / 1000000);
+                println!("update {}, random {}, match {}, find {}, fetch {}, resolved {}, find k {}\n\n", debug_update_time / 1000000, debug_random_time / 1000000, debug_best_match_time / 1000000, debug_find_candidates_time / 1000000, debug_fetch_add_time / 1000000, debug_get_resolved_pixel_time / 1000000, debug_find_time / 1000000);
                 remaining_threads.fetch_sub(1, Ordering::Relaxed);
             };
 
